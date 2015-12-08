@@ -4,12 +4,12 @@ var http;
 http = require('http');
 
 module.exports = function(requestListener) {
-  var _nextId, connections, destroy, emitIfEmpty, isAcceptingNewRequests, onRequest, origClose, server, trackConnection;
+  var _nextId, connections, destroyIfIdle, emitIfEmpty, isAcceptingNewRequests, origClose, server, trackConnection;
   _nextId = 1;
   isAcceptingNewRequests = true;
   connections = {};
   server = http.createServer(requestListener);
-  destroy = function(connection) {
+  destroyIfIdle = function(connection) {
     if (isAcceptingNewRequests) {
       return;
     }
@@ -38,17 +38,16 @@ module.exports = function(requestListener) {
       return emitIfEmpty();
     });
   };
-  onRequest = function(req, res) {
+  server.on('connection', trackConnection);
+  server.on('request', function(req, res) {
     var connection;
     connection = trackConnection(req.socket);
     connection.isIdle = false;
     return res.on('finish', function() {
       connection.isIdle = true;
-      return destroy(connection);
+      return destroyIfIdle(connection);
     });
-  };
-  server.on('connection', trackConnection);
-  server.on('request', onRequest);
+  });
   origClose = server.close;
   server.close = function(cb) {
     var _, connection, res;
@@ -57,7 +56,7 @@ module.exports = function(requestListener) {
       isAcceptingNewRequests = false;
       for (_ in connections) {
         connection = connections[_];
-        destroy(connection);
+        destroyIfIdle(connection);
       }
       emitIfEmpty();
     }

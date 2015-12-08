@@ -5,7 +5,7 @@ module.exports = (requestListener) ->
   connections = {}
   server = http.createServer requestListener
 
-  destroy = (connection) ->
+  destroyIfIdle = (connection) ->
     return if isAcceptingNewRequests
     return unless connection.isIdle
     connection.destroy()
@@ -24,15 +24,13 @@ module.exports = (requestListener) ->
       delete connections[connection.id]
       emitIfEmpty()
 
-  onRequest = (req, res) ->
+  server.on 'connection', trackConnection
+  server.on 'request', (req, res) ->
     connection = trackConnection req.socket
     connection.isIdle = no
     res.on 'finish', ->
       connection.isIdle = yes
-      destroy connection
-
-  server.on 'connection', trackConnection
-  server.on 'request', onRequest
+      destroyIfIdle connection
 
   # Replace the original close method
   origClose = server.close
@@ -40,7 +38,7 @@ module.exports = (requestListener) ->
     res = origClose.apply server, [cb]
     if isAcceptingNewRequests
       isAcceptingNewRequests = no
-      destroy connection for _, connection of connections
+      destroyIfIdle connection for _, connection of connections
       emitIfEmpty()
     res
   server
